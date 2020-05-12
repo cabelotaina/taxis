@@ -1,6 +1,6 @@
 ---
 title: "Taxis de Nueva York"
-author: "Pablo A Haya (Sustituir por nombre alumnos)"
+author: "Maurilio Atila Carvalho de Santana"
 date: "27 Abril de 2020"
 output:
   prettydoc::html_pretty:
@@ -8,6 +8,10 @@ output:
     highlight: github
   html_notebook: default
 ---
+
+podemos hacer un radio para saber donde esta el starbucks...
+
+
 ```{r global_options, include=FALSE}
 rm(list=ls()) 
 library(knitr)
@@ -111,14 +115,22 @@ Es nececario entender bien cada variable, incluyendo las unidades si las hubiera
 ```{r}
 plot1 <- ggplot(df, aes(x=pickup_longitude)) + stat_ecdf()
 plot2 <- ggplot(df, aes(x=pickup_latitude)) + stat_ecdf()
-plot_grid(plot1, plot2, labels = c('lon', 'lat'))
+plot3 <- ggplot(df, aes(x=dropoff_longitude)) + stat_ecdf()
+plot4 <- ggplot(df, aes(x=dropoff_latitude)) + stat_ecdf()
+plot_grid(plot1, plot2, plot3, plot4, labels = c('plon', 'plat', 'dlon', 'dlat'))
+
+plot1 <- ggplot(df, aes(x=rate_code)) + stat_ecdf()
+plot2 <- ggplot(df, aes(x=passenger_count)) + stat_ecdf()
+plot3 <- ggplot(df, aes(x=trip_time_in_secs)) + stat_ecdf()
+plot4 <- ggplot(df, aes(x=trip_distance)) + stat_ecdf()
+plot_grid(plot1, plot2, plot3, plot4, labels = c('rcode', 'pcount', 'ttime', 'tdis'))
 ```
 
 > Q: ¿Qué variables son susceptibles de tener valores incompatibles?
 
 ***
 
-Incluir aquí la respuesta
+pickup_longitude, pickup_latitude, dropoff_longitude, dropoff_latitude
 
 ***
 
@@ -129,9 +141,10 @@ Esta segunda estrategia es la que se va a seguir en cada una de las variables. U
 > Q: ¿Cual es el _bounding box_ de NY?
 
 ```{r}
+# ref: https://www1.nyc.gov/assets/planning/download/pdf/data-maps/open-data/nybb_metadata.pdf?ver=18c
 # Incluir las coordenadas correspondientes, y ejecutar el trozo de código
-nw <- list(lat = XX, lon = YY)
-se <- list(lat = XX, lon = YY)
+nw <- list(lat = 40.915568, lon = -74.257159)
+se <- list(lat = 40.495992, lon = -73.699215)
 ```
 
 Una vez definido el _bounding box_ se sustituye por <code>NA</code> cualquier coordenada que se encuentre fuera.
@@ -154,14 +167,41 @@ df <- df %>%
         mutate(dropoff_latitude = replace(dropoff_latitude,
                                            which(dropoff_latitude < se$lat 
                                                  | dropoff_latitude > nw$lat),
+                                           NA))%>%
+        mutate(passenger_count = replace(passenger_count,
+                                           which(passenger_count <= 0),
+                                           NA)) %>%
+        mutate(pickup_datetime = replace(pickup_datetime,
+                                           which(pickup_datetime < as.Date('2013-01-14 00:00:00')),
+                                           NA)) %>%
+        mutate(trip_time_in_secs = replace(trip_time_in_secs,
+                                           which(trip_time_in_secs <= 0.0),
+                                           NA)) %>%
+        mutate(trip_time_in_secs = replace(trip_time_in_secs,
+                                           which(trip_time_in_secs > 3600.0),
+                                           NA)) %>%
+        mutate(trip_distance = replace(trip_distance,
+                                           which(trip_distance <= 0.0),
+                                           NA)) %>%
+          mutate(trip_distance = replace(trip_distance,
+                                           which(trip_distance > 50.0),
+                                           NA)) %>%
+         mutate(rate_code = replace(rate_code,
+                                           which(rate_code > 5.0),
                                            NA))
 ```
 
 > T: Realizar transformaciones similares en el resto de atributos que lo necesiten
 
 ***
+Hacemos el reemplace de los campos con NA en los casos:
 
-Incluir aquí la respuesta
+  * passenger_count    - cuando sea menor o igual a 0
+  * pickup_datetime    - cuando sea menor '2013-01-14 00:00:00' [por el maximo vemos que no hay maior (dia 15)]
+  * trip_time_in_secs  - cuando sea menor o igual a 0.0, y cuando sea maior que una hora [3600 segundos]
+  * trip_distance      - cuando sea menor o igual a  0.000, y cuando sea maior de 50 Millas [80 KM]
+  * pickup/dropof      - latitude y longitude en rango de la bounding box
+  * rate_code          - solo hay 5 tipos de honorarios en la pagina de taxis de NY, así que acima de 5 es NA
 
 ***
 
@@ -174,10 +214,14 @@ y en total cuantos registros han sido afectados. Antes eliminamos el atributo _s
 ```{r}
 df <- df %>% select(-store_and_fwd_flag)
 table(complete.cases(df))
+df = na.omit(df)
 ```
 
 > Q: ¿Cuál es porcentaje de registros que contienen algún campo invalidos (NA) sin contar store_and_fwd_flag? ¿Existe alguna variable que tenga un número de valores inválidos superior al 10%?
 
+***
+Aproximadamente 3,19% de los registros contienem algun campo inválido, y no hay ninguna variable con un número de valores inválidos superior al 10%.
+***
 # Exploración inicial
 
 Una vez dispuesto un conjunto de datos limpios vamos a comenzar con una serie de preguntas básicas que permiten entender un poco más en detalle cómo conducen los taxista en Nueva York.
@@ -188,30 +232,46 @@ Esta pregunta se puede responder mediante la función <code>summary</code> o gr�
 
 ```{r}
 hack_license <- as.data.frame(table(df$hack_license))
-plot1 <- ggplot(hack_license, aes(Freq)) + stat_ecdf()
-plot2 <- ggplot(hack_license, aes(Freq)) + geom_histogram(binwidth = 5)
-plot_grid(plot1, plot2, labels = c("ecdf", "hist"))
+# plot1 <- ggplot(hack_license, aes(Freq)) + stat_ecdf()
+# plot2 <- ggplot(hack_license, aes(Freq)) + geom_histogram(binwidth = 5)
+# plot_grid(plot1, plot2, labels = c("ecdf", "hist"))
+summary(hack_license)
 ```
 
 ***
 
-Incluir aquí la respuesta
+media 19
+maxima 74
 
 ***
 
 > Q: ¿Cuantos viajes se hacen en promedio por un mismo taxi? ¿Qué relación existe con los viajes por los taxistas?
 
+```{r}
+medallion <- as.data.frame(table(df$medallion))
+# plot1 <- ggplot(medallion, aes(Freq)) + stat_ecdf()
+# plot2 <- ggplot(medallion, aes(Freq)) + geom_histogram(binwidth = 5)
+# plot_grid(plot1, plot2, labels = c("ecdf", "hist"))
+summary(medallion)
+```
+
 ***
 
-Incluir aquí la respuesta
+media 33, los valores encontrados en ambos data frames son proporcionales, lo que nos hace pensar que un taxi para dos o mas taxistas...
 
 ***
-
+```{r}
+summary(df$trip_time_in_secs)
+```
+```{r}
+summary(df$trip_distance)
+```
 > Q: ¿Cuál es el tiempo medio y la distancia media de un carrera?
 
 ***
 
-Incluir aquí la respuesta
+tiempo medio 660 segundos
+distancia media 3 millas
 
 ***
 
@@ -219,15 +279,20 @@ Incluir aquí la respuesta
 
 ***
 
-Incluir aquí la respuesta
+0,004545454545 millas/segundo
+16,36 millas/hora
+26 KM/hora
 
 ***
+```{r}
+summary(df$passenger_count)
+```
 
 > Q: ¿Cómo es la distribución del número de pasajeros por viaje?
 
 ***
 
-Incluir aquí la respuesta
+1.6 passajeros por viaje
 
 ***
 
@@ -251,7 +316,7 @@ plot_grid(plot_pickup, plot_dropoff, labels = c('Pickup', 'Dropoff'))
 
 ***
 
-Incluir aquí la respuesta
+Los passageros circulam dentro de la ciudad, principalmente, y usan el taxi mas para salir de saliudad que para entrar a la ciudad.
 
 ***
 
@@ -260,6 +325,15 @@ Incluir aquí la respuesta
 De la misma manera, podemos estudiar cómo varía el número de viajes en función de la hora día, obteniendo una aproximación al ciclo vida diario de la ciudad.
 
 ```{r}
+
+pickups <- data.frame(time=sort(df$pickup_datetime))
+pickup_by_hour <- cut(pickups$time, breaks="1 hour", labels=FALSE)-1
+
+ts_pickup <- pickups %>% 
+                mutate(hour = pickup_by_hour) %>% 
+                group_by(hour) %>% 
+                summarise(freq = length(hour))
+
 dropoffs <- data.frame(time=sort(df$dropoff_datetime))
 dropoff_by_hour <- cut(dropoffs$time, breaks="1 hour", labels=FALSE)-1
 
@@ -269,20 +343,19 @@ ts_dropoff <- dropoffs %>%
                 summarise(freq = length(hour))
 
 ts_dropoff$hour <- as.POSIXct(ts_dropoff$hour*3600, origin = "1970-01-01", tz = "UTC")
+# print(ts_dropoff)
 
 ggplot(ts_dropoff, aes(hour, freq)) + geom_line() + 
         scale_x_datetime(labels = date_format("%k"), 
                      breaks = date_breaks("1 hour"),
                      minor_breaks = date_breaks("30 min")) +
-                     xlab("") + ylab("Número de bajadas") 
+                     xlab("") + ylab("Número de bajadas")
 ```
 
 > Q: Describir este ciclo de actividad de la ciudad, y estudiar la relación que existe con el número de recogidas por hora  
 
 ***
-
-Incluir aquí la respuesta
-
+A partir de las 4h empeza a subir el ritmo de los viajes en NY y va hasta 8-9h que es el pico, de la mañana, luego hasta las 11h hay una queda y hasta las 17h el movimiento se mantiene, luego empeza el movimiento de las 20hs que es el pico del dia y despues de las 22hs el ritmo va bajando mucho hasta las 4h cuando volve a empezar otro ciclo.
 ***
 
 # ¿Cuanto se tarda en llegar al aeropuerto JFK en taxi?
@@ -292,9 +365,11 @@ Sin duda, una de las preguntas que muchos turista que visitan Nueva York se hace
 Lo primero que necesitamos es determinar dónde se encuentra el aeropuerto JFK
 
 > Q: ¿Cual es el _bounding box_ de JFK?
+
 ```{r}
-jfk_nw <- list(lat = XX, lon = YY)
-jfk_se <- list(lat = XX, lon = YY)
+jfk_nw <- list(lat =  40.675252, lon = -73.8249)
+jfk_se <- list(lat = 40.61723, lon = -73.745382)
+westlimit=-73.8249; southlimit=40.61723; eastlimit=-73.745382; northlimit=40.675252
 ```
 
 Así podemos obtener todos las recogidas que se producen en un día en JFK
@@ -302,13 +377,17 @@ Así podemos obtener todos las recogidas que se producen en un día en JFK
 jfk_pickups <- df %>% 
                     filter(jfk_nw$lon < pickup_longitude & pickup_longitude < jfk_se$lon ) %>%
                     filter(jfk_se$lat < pickup_latitude & pickup_latitude < jfk_nw$lat)
+count(jfk_pickups)
 ```
 
 y todos los taxis que dejan viajeros en el aeropuerto
+
 ```{r}
 jfk_dropoffs <- df %>% 
                     filter(jfk_nw$lon < dropoff_longitude & dropoff_longitude < jfk_se$lon ) %>%
                     filter(jfk_se$lat < dropoff_latitude & dropoff_latitude < jfk_nw$lat)
+count(jfk_dropoffs)
+
 ```
 
 Simplemente contando el número de registros en cada uno de los _data_frame_ anteriores ya podemos responder a:
@@ -317,15 +396,19 @@ Simplemente contando el número de registros en cada uno de los _data_frame_ ant
 
 ***
 
-Incluir aquí la respuesta
+Para venir del aeropuerto...
 
 ***
+
+```{r}
+(count(jfk_dropoffs)+count(jfk_pickups)*100)/count(df)
+```
 
 > Q: ¿Qué porcentaje de los viajes en un día comienza o terminan en el aeropuerto?
 
 ***
 
-Incluir aquí la respuesta
+1.8%
 
 ***
 
@@ -347,11 +430,11 @@ jfk_plot_dropoff <- ggplot(jfk_dropoff_lonlat) + stat_binhex(aes(x=x, y=y), bins
 plot_grid(jfk_plot_pickup, jfk_plot_dropoff, labels = c('To', 'From'))
 ```
 
-> Q: ¿Qué diferencias existen entre los viajes que van hace el aeropuerto y los que parten de él?
+> Q: ¿Qué diferencias existen entre los viajes que van hacia el aeropuerto y los que parten de él?
 
 ***
 
-Incluir aquí la respuesta
+Los que van hacia el aeropuerto parecen ser de toda la ciudad, encuanto los parten de él van en grande maioria para Manhattan de NY.
 
 ***
 
@@ -375,7 +458,7 @@ trips_manh_jfk <- df %>%
 y ya podemos pintar la distribución de cuanto se tarda:
 ```{r}
 plot1 <- ggplot(trips_manh_jfk, aes(trip_time_in_secs/60)) + stat_ecdf()
-plot2 <- ggplot(trips_manh_jfk, aes(trip_time_in_secs/60)) + geom_histogram(bins = 35)
+plot2 <- ggplot(trips_manh_jfk, aes(trip_time_in_secs/60)) + geom_histogram(bins = 34)
 plot_grid(plot1, plot2, labels= c("edcd", "hist"))
 ```
 
@@ -383,9 +466,13 @@ plot_grid(plot1, plot2, labels= c("edcd", "hist"))
 
 Puedes emplear la función <code>quantile</code> si quieres calcular exactamente.
 
+```{r}
+quantile(trips_manh_jfk$trip_time_in_secs,.95)/60
+```
+
 ***
 
-Incluir aquí la respuesta
+proximadamente 48 minutos
 
 ***
 
@@ -418,19 +505,30 @@ ggplot(ts_dropoff, aes(x=hour)) +
 ```
 <!-- Nota interna: estos tiempo parecen demasiados pequeños -->
 
-> Q: ¿Cómo explica el ciclo de activida diaria que hemos dibujado antes esta gráfica?
+> Q: ¿Cómo explica el ciclo de activida diaria que hemos dibujado ante esta gráfica?
 
 ***
 
-Incluir aquí la respuesta
+Em media podemos ver cuanto tarda una corrida de taxi desde Manhattan para el JFK utilizando la linea negra en el centro de la grafica, poemos ver que es similar a los horarios de movimiento de taxis en toda la ciudad, pero hay dos diferencias el pico de las 01h y de las 22h, que pueden estar vinculados a bajos precios ofrecidos por las conpañias para vuelos a estas horas.
+
+Otro punto son los maximos y minimos en los cuartiles me parece razonable que una persona tarde 20 min para llegar al aeropuerto como min y 1 hora como maximo.
+
+He mirado para el horario de las 12 horas cuanto tiempo lleva de Manhattan, Nova Iorque, NY, EUA para Aeroporto Internacional John F. Kennedy usando google maps, y me sale un valor cercano al valor de la media en nuestra grafica, 30 min.
+
+https://www.google.com/maps/dir/Manhattan,+Nova+Iorque,+NY,+EUA/JFK+Airport+(JFK),+Queens,+NY,+EUA/@40.7451851,-74.0206676,11z/data=!3m1!4b1!4m14!4m13!1m5!1m1!1s0x89c2588f046ee661:0xa0b3281fcecc08c!2m2!1d-73.9712488!2d40.7830603!1m5!1m1!1s0x89c26650d5404947:0xec4fb213489f11f0!2m2!1d-73.7781391!2d40.6413111!3e0
 
 ***
 
 > Q: ¿Qué franja horario es la que tiene más variabilidad de duración de viaje?
 
+```{r}
+  values = (ts_dropoff$q95-ts_dropoff$q5)
+  match(max(values), values)-1
+```
+
 ***
 
-Incluir aquí la respuesta
+Por las 9 horas tenemos mas variabilidad.
 
 ***
 
@@ -444,8 +542,8 @@ Para determinar esta estimación puedes emplear gráficas anteriores o ir a busc
 
 ```{r}
 # Incluir tu estimación propia de cada umbral (0-23)
-start_daytime <- XXX
-end_daytime <- XXX
+start_daytime <- 0
+end_daytime <- 23
 ```
 
 Partimos el _dataset_ en viajes nocturnos y diurnos
@@ -468,7 +566,7 @@ plot_grid(daytime_plot, nighttime_plot, labels = c("day", "night"))
 
 ***
 
-Incluir aquí la respuesta
+
 
 ***
 
